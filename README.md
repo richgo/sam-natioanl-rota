@@ -1,1 +1,1 @@
-# sam-natioanl-rota
+# sam-national-rota
