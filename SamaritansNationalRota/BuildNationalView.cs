@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using Microsoft.Azure.WebJobs;
 using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.Azure.WebJobs.Host;
+using Microsoft.WindowsAzure.Storage.Table;
+using Newtonsoft.Json;
 using SamaritansNationalRota.Models;
 
 namespace SamaritansNationalRota
@@ -14,8 +16,7 @@ namespace SamaritansNationalRota
     public static class BuildNationalView
     {
         [FunctionName("BuildNationalView")]
-        [return: Table("RotaView", Connection = "SamaritansRotaConnectionString")]
-        public static async Task<RotaView> RunScheduled([OrchestrationTrigger] DurableOrchestrationContext ctx, [Table("RotaConfig", "Branches", Connection = "SamaritansRotaConnectionString")] IQueryable<Branch> branchQuery, TraceWriter log)
+        public static async Task Run([OrchestrationTrigger] DurableOrchestrationContext ctx, [Table("RotaView", Connection = "SamaritansRotaConnectionString")]CloudTable rotaViewTable, [Table("RotaConfig", "Branches", Connection = "SamaritansRotaConnectionString")] IQueryable<Branch> branchQuery, TraceWriter log)
         {
             try
             {
@@ -26,7 +27,7 @@ namespace SamaritansNationalRota
                 if (branches == null || branches.Count() == 0)
                 {
                     log.Warning("No Branches configured in the RotaConfig table, exiting");
-                    return null;
+                    return;
                 }
 
                 foreach (var branch in branches)
@@ -40,26 +41,69 @@ namespace SamaritansNationalRota
                 var allShifts = parallelTasks.Where(t => t.Result != null && t.Result.shifts != null)
                                              .SelectMany(t => t.Result.shifts);
                 
+
+                // Comment this out to insert test data into the cloud table (i.e. when there are no working branch keys)
                 if (!allShifts.Any())
                 {
-                    log.Error("No Rota data returned for any Branches.");
-                    return null;
+                    log.Error("No Rota data returned for any Branches.");                    
                 }
+
+                // Persist the shifts in a cloud table per day
 
                 var shiftCoveragePerHours = GetShiftsOnHourByHourBasis(allShifts.ToList()).ToList();
 
-                return new RotaView { PartitionKey = "RotaView", RowKey = "RotaView", ShiftCoverage = shiftCoveragePerHours };
+                var distinctDays = shiftCoveragePerHours.Select(s => s.StartDate.Date)
+                                                        .Distinct();
+                foreach(var day in distinctDays)
+                {
+                    var shiftsForDay = shiftCoveragePerHours.Where(s => s.StartDate.Date == day.Date)
+                                                            .OrderBy(s => s.StartDate);
+
+                    var rotaViewForDay = new RotaView
+                    {
+                        PartitionKey = "RotaView",
+                        RowKey = day.ToString("dd-MM-yyyy"),
+                        ShiftCoverage = JsonConvert.SerializeObject(shiftsForDay)
+                    };
+                    
+                    var insertOrReplaceOperation = TableOperation.InsertOrReplace(rotaViewForDay);
+                    rotaViewTable.Execute(insertOrReplaceOperation);
+                }
+
             }
             catch(Exception ex)
             {
                 log.Error("Failed to run BuildNationalView. " + ex.ToString());
             }
-            return null;
         }
 
-        private static IEnumerable<ShiftCoveragePerHour> GetShiftsOnHourByHourBasis(IEnumerable<Shift> shifts)
+        private static IEnumerable<ShiftCoveragePerHour> GetShiftsOnHourByHourBasis(IList<Shift> shifts)
         {
             List<ShiftCoveragePerHour> shiftCoveragePerHour = new List<ShiftCoveragePerHour>();
+
+            #region generate some test data
+            // comment this in to generate some test data.
+
+            //for(int i = 0;i <20;i++)
+            //{
+            //    int day = 0;
+            //    if(i % 4 == 0)
+            //    {
+            //        day++;
+            //    }
+            //    var testShift = new Shift
+            //    {
+            //        BranchName = "test branch " + i,
+            //        rota = "test rota name " + i,
+            //        start_datetime = DateTime.Now.AddDays(day),
+            //        duration = 1000,
+            //        volunteers = new Volunteer[0],
+            //        id = i,
+            //        title = "Test title " + i
+            //    };
+            //    shifts.Add(testShift);
+            //}
+            #endregion
 
             foreach (Shift shift in shifts)
             {

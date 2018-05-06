@@ -19,10 +19,10 @@ namespace SamaritansNationalRota
         {
             try
             {
-                string jsonRespose = "";
-                var today = DateTime.Today;
-                var startDate = today.ToString("dd-MM-yyyy");
-                var endDate = today.AddDays(60).ToString("dd-MM-yyyy");
+                string jsonRespose = "";               
+                var numberOfDaysInFuture = int.Parse(Environment.GetEnvironmentVariable("numberOfDaysInFuture", EnvironmentVariableTarget.Process));
+                var startDate = DateTime.Today.ToString("dd-MM-yyyy");
+                var endDate = DateTime.Today.AddDays(numberOfDaysInFuture).ToString("dd-MM-yyyy");
                 var requestUri = new Uri($"https://3r.org.uk/stats/export_rotas.json?start_date={startDate}&end_date={endDate}");
                 var client = new HttpClient();
                 var request = new HttpRequestMessage()

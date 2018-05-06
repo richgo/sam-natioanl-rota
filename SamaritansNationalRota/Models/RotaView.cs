@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.WindowsAzure.Storage.Table;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,10 +7,8 @@ using System.Threading.Tasks;
 
 namespace SamaritansNationalRota.Models
 {
-    public class RotaView
+    public class RotaView : TableEntity
     {       
-        public string PartitionKey { get; set; }
-        public string RowKey { get; set; }
-        public List<ShiftCoveragePerHour> ShiftCoverage { get; set; }     
+        public string ShiftCoverage { get; set; }     
     }
 }
